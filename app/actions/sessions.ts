@@ -98,12 +98,32 @@ export async function startEmptySession() {
   redirect(`/sessao/${session.id}`);
 }
 
+async function isSessionCompleted(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  sessionId: string,
+) {
+  const { data } = await supabase
+    .from("workout_sessions")
+    .select("completed_at")
+    .eq("id", sessionId)
+    .single();
+  return data?.completed_at != null;
+}
+
+function revalidateSessionPaths(sessionId: string) {
+  revalidatePath(`/sessao/${sessionId}`);
+  revalidatePath("/historico");
+  revalidatePath("/estatisticas");
+  revalidatePath("/treinos");
+}
+
 export async function addSessionExercise(
   sessionId: string,
   exerciseId: string,
   position: number,
 ): Promise<{ exercise: SessionExercise; previous: PreviousSet[] } | { error: string }> {
   const { supabase } = await requireUser();
+  const completed = await isSessionCompleted(supabase, sessionId);
 
   const { data: row, error } = await supabase
     .from("session_exercises")
@@ -125,7 +145,8 @@ export async function addSessionExercise(
       exercise_id: exerciseId,
       session_exercise_id: row.id,
       set_index: 1,
-      completed: false,
+      completed,
+      completed_at: completed ? new Date().toISOString() : null,
     })
     .select("*")
     .single();
@@ -133,6 +154,7 @@ export async function addSessionExercise(
   if (setError || !set) return { error: setError?.message ?? "Erro ao criar série." };
 
   const previous = await getPreviousSets(supabase, [exerciseId], sessionId);
+  revalidateSessionPaths(sessionId);
 
   return {
     exercise: { ...(row as Omit<SessionExercise, "sets">), sets: [set as SessionSet] },
@@ -140,9 +162,10 @@ export async function addSessionExercise(
   };
 }
 
-export async function removeSessionExercise(id: string) {
+export async function removeSessionExercise(id: string, sessionId?: string) {
   const { supabase } = await requireUser();
   const { error } = await supabase.from("session_exercises").delete().eq("id", id);
+  if (!error && sessionId) revalidateSessionPaths(sessionId);
   return error ? { error: error.message } : {};
 }
 
@@ -167,7 +190,6 @@ export async function moveSessionExercise(
     .select("id")
     .eq("id", sessionId)
     .eq("user_id", user.id)
-    .is("completed_at", null)
     .single();
 
   if (!session) return { error: "Sessão não encontrada." };
@@ -201,6 +223,7 @@ export async function moveSessionExercise(
     .eq("id", neighbor.id);
   if (b) return { error: b.message };
 
+  revalidateSessionPaths(sessionId);
   return {};
 }
 
@@ -209,6 +232,7 @@ export async function addSessionSet(
   setIndex: number,
 ): Promise<{ set: SessionSet } | { error: string }> {
   const { supabase } = await requireUser();
+  const completed = await isSessionCompleted(supabase, sessionExercise.session_id);
 
   const { data, error } = await supabase
     .from("session_sets")
@@ -217,18 +241,21 @@ export async function addSessionSet(
       exercise_id: sessionExercise.exercise_id,
       session_exercise_id: sessionExercise.id,
       set_index: setIndex,
-      completed: false,
+      completed,
+      completed_at: completed ? new Date().toISOString() : null,
     })
     .select("*")
     .single();
 
   if (error || !data) return { error: error?.message ?? "Erro ao criar série." };
+  revalidateSessionPaths(sessionExercise.session_id);
   return { set: data as SessionSet };
 }
 
 export async function updateSessionSet(
   id: string,
   values: { reps: number | null; weight_kg: number | null; completed: boolean },
+  sessionId?: string,
 ) {
   const { supabase } = await requireUser();
   const { error } = await supabase
@@ -238,12 +265,14 @@ export async function updateSessionSet(
       completed_at: values.completed ? new Date().toISOString() : null,
     })
     .eq("id", id);
+  if (!error && sessionId) revalidateSessionPaths(sessionId);
   return error ? { error: error.message } : {};
 }
 
-export async function removeSessionSet(id: string) {
+export async function removeSessionSet(id: string, sessionId?: string) {
   const { supabase } = await requireUser();
   const { error } = await supabase.from("session_sets").delete().eq("id", id);
+  if (!error && sessionId) revalidateSessionPaths(sessionId);
   return error ? { error: error.message } : {};
 }
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { PencilIcon } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import type { LoggerExercise } from "@/components/session/exercise-block";
 import { SessionDurationEditor } from "@/components/session/session-duration-editor";
@@ -11,8 +12,13 @@ import { toLoggerSet } from "@/lib/session";
 import type { Exercise, SessionExercise, SessionSet, WorkoutSession } from "@/lib/types";
 import { createClient } from "@/utils/supabase/server";
 
-export default async function SessaoPage({ params }: PageProps<"/sessao/[id]">) {
+export default async function SessaoPage({
+  params,
+  searchParams,
+}: PageProps<"/sessao/[id]">) {
   const { id } = await params;
+  const { editar } = await searchParams;
+  const editing = editar === "1" || editar === "true";
   const supabase = await createClient();
 
   const { data: session } = await supabase
@@ -48,43 +54,54 @@ export default async function SessaoPage({ params }: PageProps<"/sessao/[id]">) 
     sets: [...row.sets].sort((a, b) => a.set_index - b.set_index),
   }));
 
-  if (typedSession.completed_at) {
+  const completed = Boolean(typedSession.completed_at);
+  const wantsEditor = !completed || editing;
+
+  if (wantsEditor) {
+    const [previous, { data: library }] = await Promise.all([
+      getPreviousSets(
+        supabase,
+        [...new Set(sessionExercises.map((e) => e.exercise_id))],
+        id,
+      ),
+      supabase.from("exercises").select("*").order("name", { ascending: true }),
+    ]);
+
+    const initialExercises: LoggerExercise[] = sessionExercises.map((row) => ({
+      id: row.id,
+      session_id: row.session_id,
+      exercise_id: row.exercise_id,
+      exercise: row.exercise,
+      target_reps: row.target_reps,
+      rest_seconds: row.rest_seconds,
+      sets: row.sets.map(toLoggerSet),
+      previous: previous[row.exercise_id] ?? [],
+    }));
+
+    const durationSeconds = completed
+      ? (new Date(typedSession.completed_at!).getTime() -
+          new Date(typedSession.started_at).getTime()) /
+        1000
+      : undefined;
+
     return (
-      <AppShell active="sessao">
-        <SessionSummary session={typedSession} title={title} exercises={sessionExercises} />
+      <AppShell active={completed ? "historico" : "sessao"}>
+        <WorkoutLogger
+          sessionId={id}
+          title={title}
+          startedAt={typedSession.started_at}
+          initialExercises={initialExercises}
+          library={(library ?? []) as Exercise[]}
+          mode={completed ? "history" : "live"}
+          initialDurationSeconds={durationSeconds}
+        />
       </AppShell>
     );
   }
 
-  const [previous, { data: library }] = await Promise.all([
-    getPreviousSets(
-      supabase,
-      [...new Set(sessionExercises.map((e) => e.exercise_id))],
-      id,
-    ),
-    supabase.from("exercises").select("*").order("name", { ascending: true }),
-  ]);
-
-  const initialExercises: LoggerExercise[] = sessionExercises.map((row) => ({
-    id: row.id,
-    session_id: row.session_id,
-    exercise_id: row.exercise_id,
-    exercise: row.exercise,
-    target_reps: row.target_reps,
-    rest_seconds: row.rest_seconds,
-    sets: row.sets.map(toLoggerSet),
-    previous: previous[row.exercise_id] ?? [],
-  }));
-
   return (
-    <AppShell active="sessao">
-      <WorkoutLogger
-        sessionId={id}
-        title={title}
-        startedAt={typedSession.started_at}
-        initialExercises={initialExercises}
-        library={(library ?? []) as Exercise[]}
-      />
+    <AppShell active="historico">
+      <SessionSummary session={typedSession} title={title} exercises={sessionExercises} />
     </AppShell>
   );
 }
@@ -130,15 +147,28 @@ function SessionSummary({
 
   return (
     <>
-      <section className="flex flex-col gap-1">
-        <p className="text-[13px] text-muted-foreground">Treino concluído · {date}</p>
-        <h2 className="font-medium">{title}</h2>
-        <div className="mt-1 flex flex-wrap items-baseline gap-x-3 text-[13px] text-foreground-secondary">
-          <SessionDurationEditor sessionId={session.id} durationSeconds={duration} />
-          <span>{sets.length} séries</span>
-          <span>{formatWeight(volume)} kg</span>
+      <section className="flex flex-col gap-3">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[13px] text-muted-foreground">Treino concluído · {date}</p>
+            <h2 className="font-medium">{title}</h2>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-3 text-[13px] text-foreground-secondary">
+              <SessionDurationEditor sessionId={session.id} durationSeconds={duration} />
+              <span>{sets.length} séries</span>
+              <span>{formatWeight(volume)} kg</span>
+            </div>
+            <p className="text-[12px] text-muted-foreground">Toque na duração para editar rápido.</p>
+          </div>
+          <Button
+            render={<Link href={`/sessao/${session.id}?editar=1`} />}
+            variant="outline"
+            size="sm"
+            className="squircle shrink-0"
+          >
+            <PencilIcon />
+            Editar
+          </Button>
         </div>
-        <p className="text-[12px] text-muted-foreground">Toque na duração para editar.</p>
       </section>
 
       <section className="flex flex-col gap-5">
@@ -160,9 +190,14 @@ function SessionSummary({
         ))}
       </section>
 
-      <Button render={<Link href="/treinos" />} className="squircle self-start">
-        Voltar aos treinos
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button render={<Link href="/historico" />} variant="outline" className="squircle">
+          Voltar ao histórico
+        </Button>
+        <Button render={<Link href="/treinos" />} className="squircle">
+          Treinos
+        </Button>
+      </div>
     </>
   );
 }

@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useMemo, useState, useTransition } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import {
   addSessionExercise,
@@ -10,6 +12,7 @@ import {
   moveSessionExercise,
   removeSessionExercise,
   removeSessionSet,
+  updateSessionDuration,
   updateSessionExerciseRest,
   updateSessionSet,
 } from "@/app/actions/sessions";
@@ -50,23 +53,31 @@ export function WorkoutLogger({
   startedAt,
   initialExercises,
   library,
+  mode = "live",
+  initialDurationSeconds,
 }: {
   sessionId: string;
   title: string;
   startedAt: string;
   initialExercises: LoggerExercise[];
   library: Exercise[];
+  mode?: "live" | "history";
+  initialDurationSeconds?: number;
 }) {
+  const router = useRouter();
+  const isHistory = mode === "history";
   const [exercises, setExercises] = useState(initialExercises);
   const [rest, setRest] = useState<RestState>(null);
   const [error, setError] = useState<string | null>(null);
   const [addingExercise, setAddingExercise] = useState(false);
   const [addingSetFor, setAddingSetFor] = useState<string | null>(null);
   const [finishOpen, setFinishOpen] = useState(false);
-  const [finishHours, setFinishHours] = useState(0);
-  const [finishMinutes, setFinishMinutes] = useState(0);
+  const initialParts = durationParts(initialDurationSeconds ?? 60);
+  const [finishHours, setFinishHours] = useState(initialParts.hours);
+  const [finishMinutes, setFinishMinutes] = useState(initialParts.minutes);
   const [finishing, startFinish] = useTransition();
   const [discarding, startDiscard] = useTransition();
+  const [saving, startSave] = useTransition();
   const now = useNow();
   const elapsedSeconds =
     now > 0
@@ -91,11 +102,15 @@ export function WorkoutLogger({
   };
 
   const persistSet = (set: LoggerSet) => {
-    void updateSessionSet(set.id, {
-      weight_kg: parseNumber(set.weight),
-      reps: parseNumber(set.reps),
-      completed: set.completed,
-    }).then(report);
+    void updateSessionSet(
+      set.id,
+      {
+        weight_kg: parseNumber(set.weight),
+        reps: parseNumber(set.reps),
+        completed: set.completed,
+      },
+      sessionId,
+    ).then(report);
   };
 
   const toggleSet = (item: LoggerExercise, setId: string) => {
@@ -120,7 +135,7 @@ export function WorkoutLogger({
     patchSet(item.id, setId, next);
     persistSet(next);
 
-    if (completing && item.rest_seconds) {
+    if (!isHistory && completing && item.rest_seconds) {
       setRest(restEndingIn(item.rest_seconds));
     }
   };
@@ -148,12 +163,12 @@ export function WorkoutLogger({
     setExercises((list) =>
       list.map((e) => (e.id === item.id ? { ...e, sets: e.sets.filter((s) => s.id !== setId) } : e)),
     );
-    void removeSessionSet(setId).then(report);
+    void removeSessionSet(setId, sessionId).then(report);
   };
 
   const removeExercise = (item: LoggerExercise) => {
     setExercises((list) => list.filter((e) => e.id !== item.id));
-    void removeSessionExercise(item.id).then(report);
+    void removeSessionExercise(item.id, sessionId).then(report);
   };
 
   const moveExercise = (item: LoggerExercise, direction: "up" | "down") => {
@@ -210,68 +225,123 @@ export function WorkoutLogger({
 
   return (
     <div className="flex flex-col gap-section pb-28">
-      <header className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h2 className="truncate font-medium">{title}</h2>
-          <p className="mt-1 flex flex-wrap gap-x-3 text-[13px] text-muted-foreground">
-            <ElapsedTime startedAt={startedAt} />
-            <span>{stats.sets} séries</span>
-            <span>{formatWeight(stats.volume)} kg</span>
-          </p>
-        </div>
-        <Dialog
-          open={finishOpen}
-          onOpenChange={(open) => {
-            if (open) {
-              const parts = durationParts(elapsedSeconds);
-              setFinishHours(parts.hours);
-              setFinishMinutes(parts.minutes);
-            }
-            setFinishOpen(open);
-          }}
-        >
-          <DialogTrigger
-            render={
-              <Button className="squircle shrink-0" disabled={stats.sets === 0} loading={finishing} />
-            }
-          >
-            Concluir
-          </DialogTrigger>
-          <DialogPopup className="squircle">
-            <DialogHeader>
-              <DialogTitle className="font-medium text-base">Concluir treino</DialogTitle>
-              <DialogDescription>
-                Confira a duração antes de salvar. O tempo começa no início da sessão.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex flex-col gap-3 px-4 pb-2">
-              <DurationFields
-                idPrefix="finish"
-                hours={finishHours}
-                minutes={finishMinutes}
-                onHoursChange={setFinishHours}
-                onMinutesChange={setFinishMinutes}
-              />
-            </div>
-            <DialogFooter>
-              <DialogClose render={<Button variant="outline" className="squircle" />}>
-                Continuar
-              </DialogClose>
+      <header className="flex flex-col gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[13px] text-muted-foreground">
+              {isHistory ? "Editando treino do histórico" : null}
+            </p>
+            <h2 className="truncate font-medium">{title}</h2>
+            <p className="mt-1 flex flex-wrap gap-x-3 text-[13px] text-muted-foreground">
+              {isHistory ? null : <ElapsedTime startedAt={startedAt} />}
+              <span>{stats.sets} séries</span>
+              <span>{formatWeight(stats.volume)} kg</span>
+            </p>
+          </div>
+          {isHistory ? (
+            <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+              <Button
+                render={<Link href={`/sessao/${sessionId}`} />}
+                variant="outline"
+                className="squircle"
+              >
+                Cancelar
+              </Button>
               <Button
                 className="squircle"
-                loading={finishing}
+                loading={saving}
                 disabled={partsToSeconds(finishHours, finishMinutes) < 60}
                 onClick={() =>
-                  startFinish(() =>
-                    finishSession(sessionId, partsToSeconds(finishHours, finishMinutes)),
-                  )
+                  startSave(async () => {
+                    const result = await updateSessionDuration(
+                      sessionId,
+                      partsToSeconds(finishHours, finishMinutes),
+                    );
+                    if (result.error) {
+                      setError(result.error);
+                      return;
+                    }
+                    router.push(`/sessao/${sessionId}`);
+                    router.refresh();
+                  })
                 }
               >
-                Salvar treino
+                Salvar
               </Button>
-            </DialogFooter>
-          </DialogPopup>
-        </Dialog>
+            </div>
+          ) : (
+            <Dialog
+              open={finishOpen}
+              onOpenChange={(open) => {
+                if (open) {
+                  const parts = durationParts(elapsedSeconds);
+                  setFinishHours(parts.hours);
+                  setFinishMinutes(parts.minutes);
+                }
+                setFinishOpen(open);
+              }}
+            >
+              <DialogTrigger
+                render={
+                  <Button
+                    className="squircle shrink-0"
+                    disabled={stats.sets === 0}
+                    loading={finishing}
+                  />
+                }
+              >
+                Concluir
+              </DialogTrigger>
+              <DialogPopup className="squircle">
+                <DialogHeader>
+                  <DialogTitle className="font-medium text-base">Concluir treino</DialogTitle>
+                  <DialogDescription>
+                    Confira a duração antes de salvar. O tempo começa no início da sessão.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="flex flex-col gap-3 px-4 pb-2">
+                  <DurationFields
+                    idPrefix="finish"
+                    hours={finishHours}
+                    minutes={finishMinutes}
+                    onHoursChange={setFinishHours}
+                    onMinutesChange={setFinishMinutes}
+                  />
+                </div>
+                <DialogFooter>
+                  <DialogClose render={<Button variant="outline" className="squircle" />}>
+                    Continuar
+                  </DialogClose>
+                  <Button
+                    className="squircle"
+                    loading={finishing}
+                    disabled={partsToSeconds(finishHours, finishMinutes) < 60}
+                    onClick={() =>
+                      startFinish(() =>
+                        finishSession(sessionId, partsToSeconds(finishHours, finishMinutes)),
+                      )
+                    }
+                  >
+                    Salvar treino
+                  </Button>
+                </DialogFooter>
+              </DialogPopup>
+            </Dialog>
+          )}
+        </div>
+
+        {isHistory ? (
+          <div className="max-w-xs">
+            <p className="mb-2 text-[13px] text-muted-foreground">Duração do treino</p>
+            <DurationFields
+              idPrefix="history"
+              hours={finishHours}
+              minutes={finishMinutes}
+              onHoursChange={setFinishHours}
+              onMinutesChange={setFinishMinutes}
+            />
+          </div>
+        ) : null}
       </header>
 
       {error ? (
@@ -320,37 +390,39 @@ export function WorkoutLogger({
       <div className="flex flex-col gap-2">
         <AddExerciseDialog library={library} pending={addingExercise} onPick={addExercise} />
 
-        <Dialog>
-          <DialogTrigger
-            render={<Button variant="ghost" className="squircle w-full text-destructive" />}
-          >
-            Descartar treino
-          </DialogTrigger>
-          <DialogPopup className="squircle">
-            <DialogHeader>
-              <DialogTitle className="font-medium text-base">Descartar treino?</DialogTitle>
-              <DialogDescription>
-                Todas as séries registradas nesta sessão serão apagadas.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <DialogClose render={<Button variant="outline" className="squircle" />}>
-                Continuar treinando
-              </DialogClose>
-              <Button
-                variant="destructive"
-                className="squircle"
-                loading={discarding}
-                onClick={() => startDiscard(() => discardSession(sessionId))}
-              >
-                Descartar
-              </Button>
-            </DialogFooter>
-          </DialogPopup>
-        </Dialog>
+        {isHistory ? null : (
+          <Dialog>
+            <DialogTrigger
+              render={<Button variant="ghost" className="squircle w-full text-destructive" />}
+            >
+              Descartar treino
+            </DialogTrigger>
+            <DialogPopup className="squircle">
+              <DialogHeader>
+                <DialogTitle className="font-medium text-base">Descartar treino?</DialogTitle>
+                <DialogDescription>
+                  Todas as séries registradas nesta sessão serão apagadas.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <DialogClose render={<Button variant="outline" className="squircle" />}>
+                  Continuar treinando
+                </DialogClose>
+                <Button
+                  variant="destructive"
+                  className="squircle"
+                  loading={discarding}
+                  onClick={() => startDiscard(() => discardSession(sessionId))}
+                >
+                  Descartar
+                </Button>
+              </DialogFooter>
+            </DialogPopup>
+          </Dialog>
+        )}
       </div>
 
-      <RestTimer rest={rest} onChange={setRest} />
+      {isHistory ? null : <RestTimer rest={rest} onChange={setRest} />}
     </div>
   );
 }

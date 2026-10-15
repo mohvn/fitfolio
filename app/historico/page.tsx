@@ -102,7 +102,7 @@ export default async function HistoricoPage({ searchParams }: PageProps<"/histor
                         {row.title ?? row.routine?.name ?? "Treino livre"}
                       </p>
                       <p className="text-[13px] text-muted-foreground">
-                        {minutes} min · {exercises} exercícios
+                        {minutes} min · {exercises} exercícios · toque para ver ou editar
                       </p>
                     </div>
                     <ChevronRightIcon className="relative size-4 text-muted-foreground" />
