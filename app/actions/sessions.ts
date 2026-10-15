@@ -155,6 +155,55 @@ export async function updateSessionExerciseRest(id: string, restSeconds: number 
   return error ? { error: error.message } : {};
 }
 
+export async function moveSessionExercise(
+  sessionId: string,
+  id: string,
+  direction: "up" | "down",
+): Promise<{ error?: string }> {
+  const { supabase, user } = await requireUser();
+
+  const { data: session } = await supabase
+    .from("workout_sessions")
+    .select("id")
+    .eq("id", sessionId)
+    .eq("user_id", user.id)
+    .is("completed_at", null)
+    .single();
+
+  if (!session) return { error: "Sessão não encontrada." };
+
+  const { data: items } = await supabase
+    .from("session_exercises")
+    .select("id, position")
+    .eq("session_id", sessionId)
+    .order("position", { ascending: true });
+
+  if (!items?.length) return {};
+
+  const index = items.findIndex((item) => item.id === id);
+  if (index < 0) return { error: "Exercício não encontrado." };
+
+  const swapIndex = direction === "up" ? index - 1 : index + 1;
+  if (swapIndex < 0 || swapIndex >= items.length) return {};
+
+  const current = items[index];
+  const neighbor = items[swapIndex];
+
+  const { error: a } = await supabase
+    .from("session_exercises")
+    .update({ position: neighbor.position })
+    .eq("id", current.id);
+  if (a) return { error: a.message };
+
+  const { error: b } = await supabase
+    .from("session_exercises")
+    .update({ position: current.position })
+    .eq("id", neighbor.id);
+  if (b) return { error: b.message };
+
+  return {};
+}
+
 export async function addSessionSet(
   sessionExercise: Pick<SessionExercise, "id" | "session_id" | "exercise_id">,
   setIndex: number,
@@ -198,8 +247,24 @@ export async function removeSessionSet(id: string) {
   return error ? { error: error.message } : {};
 }
 
-export async function finishSession(sessionId: string) {
+function completedAtFromDuration(startedAt: string, durationSeconds: number) {
+  const started = new Date(startedAt).getTime();
+  const seconds = Math.max(60, Math.floor(durationSeconds));
+  return new Date(started + seconds * 1000).toISOString();
+}
+
+export async function finishSession(sessionId: string, durationSeconds: number) {
   const { supabase, user } = await requireUser();
+
+  const { data: session } = await supabase
+    .from("workout_sessions")
+    .select("id, started_at")
+    .eq("id", sessionId)
+    .eq("user_id", user.id)
+    .is("completed_at", null)
+    .single();
+
+  if (!session) redirect("/treinos");
 
   await supabase
     .from("session_sets")
@@ -225,12 +290,42 @@ export async function finishSession(sessionId: string) {
 
   await supabase
     .from("workout_sessions")
-    .update({ completed_at: new Date().toISOString() })
+    .update({ completed_at: completedAtFromDuration(session.started_at, durationSeconds) })
     .eq("id", sessionId)
     .eq("user_id", user.id);
 
   revalidatePath("/treinos");
+  revalidatePath(`/sessao/${sessionId}`);
+  revalidatePath("/historico");
+  revalidatePath("/estatisticas");
   redirect(`/sessao/${sessionId}`);
+}
+
+export async function updateSessionDuration(sessionId: string, durationSeconds: number) {
+  const { supabase, user } = await requireUser();
+
+  const { data: session } = await supabase
+    .from("workout_sessions")
+    .select("id, started_at, completed_at")
+    .eq("id", sessionId)
+    .eq("user_id", user.id)
+    .not("completed_at", "is", null)
+    .single();
+
+  if (!session) return { error: "Treino não encontrado." };
+
+  const { error } = await supabase
+    .from("workout_sessions")
+    .update({ completed_at: completedAtFromDuration(session.started_at, durationSeconds) })
+    .eq("id", sessionId)
+    .eq("user_id", user.id);
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/sessao/${sessionId}`);
+  revalidatePath("/historico");
+  revalidatePath("/estatisticas");
+  return {};
 }
 
 export async function discardSession(sessionId: string) {

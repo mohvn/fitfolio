@@ -7,12 +7,18 @@ import {
   addSessionSet,
   discardSession,
   finishSession,
+  moveSessionExercise,
   removeSessionExercise,
   removeSessionSet,
   updateSessionExerciseRest,
   updateSessionSet,
 } from "@/app/actions/sessions";
 import { AddExerciseDialog } from "@/components/session/add-exercise-dialog";
+import {
+  DurationFields,
+  durationParts,
+  partsToSeconds,
+} from "@/components/session/duration-fields";
 import { ElapsedTime } from "@/components/session/elapsed-time";
 import {
   ExerciseBlock,
@@ -33,7 +39,7 @@ import {
 } from "@/components/ui/dialog";
 import { formatWeight, parseNumber, targetRepsAt } from "@/lib/format";
 import { toLoggerSet } from "@/lib/session";
-import { restEndingIn } from "@/lib/use-now";
+import { restEndingIn, useNow } from "@/lib/use-now";
 import type { Exercise } from "@/lib/types";
 
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -56,8 +62,16 @@ export function WorkoutLogger({
   const [error, setError] = useState<string | null>(null);
   const [addingExercise, setAddingExercise] = useState(false);
   const [addingSetFor, setAddingSetFor] = useState<string | null>(null);
+  const [finishOpen, setFinishOpen] = useState(false);
+  const [finishHours, setFinishHours] = useState(0);
+  const [finishMinutes, setFinishMinutes] = useState(0);
   const [finishing, startFinish] = useTransition();
   const [discarding, startDiscard] = useTransition();
+  const now = useNow();
+  const elapsedSeconds =
+    now > 0
+      ? Math.max(60, Math.floor((now - new Date(startedAt).getTime()) / 1000))
+      : 60;
 
   const report = useCallback((result: { error?: string } | void) => {
     if (result && "error" in result && result.error) setError(result.error);
@@ -142,6 +156,18 @@ export function WorkoutLogger({
     void removeSessionExercise(item.id).then(report);
   };
 
+  const moveExercise = (item: LoggerExercise, direction: "up" | "down") => {
+    setExercises((list) => {
+      const index = list.findIndex((e) => e.id === item.id);
+      const swapIndex = direction === "up" ? index - 1 : index + 1;
+      if (index < 0 || swapIndex < 0 || swapIndex >= list.length) return list;
+      const next = [...list];
+      [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+      return next;
+    });
+    void moveSessionExercise(sessionId, item.id, direction).then(report);
+  };
+
   const changeRest = (item: LoggerExercise, seconds: number | null) => {
     setExercises((list) => list.map((e) => (e.id === item.id ? { ...e, rest_seconds: seconds } : e)));
     void updateSessionExerciseRest(item.id, seconds).then(report);
@@ -193,14 +219,59 @@ export function WorkoutLogger({
             <span>{formatWeight(stats.volume)} kg</span>
           </p>
         </div>
-        <Button
-          className="squircle shrink-0"
-          disabled={stats.sets === 0}
-          loading={finishing}
-          onClick={() => startFinish(() => finishSession(sessionId))}
+        <Dialog
+          open={finishOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              const parts = durationParts(elapsedSeconds);
+              setFinishHours(parts.hours);
+              setFinishMinutes(parts.minutes);
+            }
+            setFinishOpen(open);
+          }}
         >
-          Concluir
-        </Button>
+          <DialogTrigger
+            render={
+              <Button className="squircle shrink-0" disabled={stats.sets === 0} loading={finishing} />
+            }
+          >
+            Concluir
+          </DialogTrigger>
+          <DialogPopup className="squircle">
+            <DialogHeader>
+              <DialogTitle className="font-medium text-base">Concluir treino</DialogTitle>
+              <DialogDescription>
+                Confira a duração antes de salvar. O tempo começa no início da sessão.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-3 px-4 pb-2">
+              <DurationFields
+                idPrefix="finish"
+                hours={finishHours}
+                minutes={finishMinutes}
+                onHoursChange={setFinishHours}
+                onMinutesChange={setFinishMinutes}
+              />
+            </div>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" className="squircle" />}>
+                Continuar
+              </DialogClose>
+              <Button
+                className="squircle"
+                loading={finishing}
+                disabled={partsToSeconds(finishHours, finishMinutes) < 60}
+                onClick={() =>
+                  startFinish(() =>
+                    finishSession(sessionId, partsToSeconds(finishHours, finishMinutes)),
+                  )
+                }
+              >
+                Salvar treino
+              </Button>
+            </DialogFooter>
+          </DialogPopup>
+        </Dialog>
       </header>
 
       {error ? (
@@ -216,7 +287,7 @@ export function WorkoutLogger({
       ) : null}
 
       <AnimatePresence initial={false}>
-        {exercises.map((item) => (
+        {exercises.map((item, index) => (
           <motion.div
             key={item.id}
             layout
@@ -227,6 +298,8 @@ export function WorkoutLogger({
           >
             <ExerciseBlock
               item={item}
+              index={index}
+              total={exercises.length}
               addingSet={addingSetFor === item.id}
               onDraft={(setId, field, value) => patchSet(item.id, setId, { [field]: value })}
               onCommit={(setId) => {
@@ -237,6 +310,7 @@ export function WorkoutLogger({
               onAddSet={() => void addSet(item)}
               onRemoveSet={(setId) => removeSet(item, setId)}
               onRemove={() => removeExercise(item)}
+              onMove={(direction) => moveExercise(item, direction)}
               onRestChange={(seconds) => changeRest(item, seconds)}
             />
           </motion.div>

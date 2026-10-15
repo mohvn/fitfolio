@@ -34,6 +34,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
    - [`supabase/migrations/003_history_import.sql`](supabase/migrations/003_history_import.sql)
    - [`supabase/migrations/004_stats.sql`](supabase/migrations/004_stats.sql)
    - [`supabase/migrations/005_backfill_muscle_groups.sql`](supabase/migrations/005_backfill_muscle_groups.sql) (preenche grupo muscular dos exercícios do Hevy)
+   - [`supabase/migrations/006_translate_exercises_pt.sql`](supabase/migrations/006_translate_exercises_pt.sql) (renomeia exercícios do Hevy para português)
 3. Em **Authentication → Providers**, confirme que Email está habilitado
 
 ## Deploy (GitHub Actions → Vercel)
@@ -53,9 +54,11 @@ bunx vercel tokens        # ou cria um token em vercel.com/account/tokens
 
 | Secret | Valor |
 |--------|--------|
-| `VERCEL_TOKEN` | token da conta |
-| `VERCEL_ORG_ID` | `orgId` do `.vercel/project.json` |
-| `VERCEL_PROJECT_ID` | `projectId` do `.vercel/project.json` |
+| `VERCEL_TOKEN` | token da conta ([vercel.com/account/tokens](https://vercel.com/account/tokens)) |
+| `VERCEL_ORG_ID` | `team_…` (no teu caso: `team_mOfczQY6zibwpDJgCzIeLUes`) |
+| `VERCEL_PROJECT_ID` | `prj_…` (no teu caso: `prj_htoxaWyI4DeF2gjo9kuFHK5a0wg2`) |
+
+Confere no dashboard do projeto: se aparecer **No Production Deployment**, o Action não promoveu para production — o domínio `*.vercel.app` fica 404 até existir um deploy Production.
 
 3. No projeto Vercel → **Settings → Environment Variables**, confere (Production + Preview):
 

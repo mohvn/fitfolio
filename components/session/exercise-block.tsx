@@ -1,6 +1,14 @@
 "use client";
 
-import { CheckIcon, PlusIcon, TimerIcon, Trash2Icon, XIcon } from "lucide-react";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  CheckIcon,
+  PlusIcon,
+  TimerIcon,
+  Trash2Icon,
+  XIcon,
+} from "lucide-react";
 import type { Exercise, PreviousSet } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +60,8 @@ const rowGrid =
 
 export function ExerciseBlock({
   item,
+  index,
+  total,
   addingSet,
   onDraft,
   onCommit,
@@ -59,9 +69,12 @@ export function ExerciseBlock({
   onAddSet,
   onRemoveSet,
   onRemove,
+  onMove,
   onRestChange,
 }: {
   item: LoggerExercise;
+  index: number;
+  total: number;
   addingSet: boolean;
   onDraft: (setId: string, field: "weight" | "reps", value: string) => void;
   onCommit: (setId: string) => void;
@@ -69,6 +82,7 @@ export function ExerciseBlock({
   onAddSet: () => void;
   onRemoveSet: (setId: string) => void;
   onRemove: () => void;
+  onMove: (direction: "up" | "down") => void;
   onRestChange: (seconds: number | null) => void;
 }) {
   return (
@@ -76,7 +90,7 @@ export function ExerciseBlock({
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-[10px]">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-mark border border-border bg-accent font-mono text-[10px] text-muted-foreground squircle">
-            {item.exercise.name.slice(0, 2).toUpperCase()}
+            {index + 1}
           </span>
           <div className="min-w-0">
             <h3 className="truncate text-sm font-medium">{item.exercise.name}</h3>
@@ -86,15 +100,37 @@ export function ExerciseBlock({
             </p>
           </div>
         </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="squircle shrink-0"
-          aria-label={`Remover ${item.exercise.name}`}
-          onClick={onRemove}
-        >
-          <Trash2Icon />
-        </Button>
+        <div className="flex shrink-0 items-center gap-px">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="squircle"
+            disabled={index === 0}
+            aria-label={`Mover ${item.exercise.name} para cima`}
+            onClick={() => onMove("up")}
+          >
+            <ArrowUpIcon />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="squircle"
+            disabled={index >= total - 1}
+            aria-label={`Mover ${item.exercise.name} para baixo`}
+            onClick={() => onMove("down")}
+          >
+            <ArrowDownIcon />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="squircle"
+            aria-label={`Remover ${item.exercise.name}`}
+            onClick={onRemove}
+          >
+            <Trash2Icon />
+          </Button>
+        </div>
       </div>
 
       <Select

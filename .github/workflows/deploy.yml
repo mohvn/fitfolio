@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: vercel-${{ github.workflow }}-${{ github.ref }}
@@ -13,51 +14,55 @@ concurrency:
 env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
 jobs:
   deploy:
-    name: ${{ github.event_name == 'push' && 'Production' || 'Preview' }}
+    name: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'Production' || 'Preview' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      deployments: write
       pull-requests: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.4.0"
+      - name: Check secrets
+        run: |
+          set -euo pipefail
+          for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -z "${!key}" ]; then
+              echo "::error::$key secret is empty"
+              exit 1
+            fi
+            val="${!key}"
+            echo "$key is set (length ${#val})"
+          done
+
+      - name: Write .vercel/project.json
+        run: |
+          mkdir -p .vercel
+          printf '%s\n' "{
+            \"orgId\": \"$VERCEL_ORG_ID\",
+            \"projectId\": \"$VERCEL_PROJECT_ID\"
+          }" > .vercel/project.json
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
-
-      - name: Pull Vercel env
-        run: >
-          vercel pull --yes --environment=${{
-            github.event_name == 'push' && 'production' || 'preview'
-          }} --token=${{ secrets.VERCEL_TOKEN }}
-
-      - name: Build
-        run: >
-          vercel build ${{
-            github.event_name == 'push' && '--prod' || ''
-          }} --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Deploy
         id: deploy
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "push" ]; then
-            url=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
+            vercel deploy --prod --yes --token="$VERCEL_TOKEN" | tee /tmp/vercel-deploy.txt
           else
-            url=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
+            vercel deploy --yes --token="$VERCEL_TOKEN" | tee /tmp/vercel-deploy.txt
           fi
+          url=$(grep -Eo 'https://[^ ]+\.vercel\.app' /tmp/vercel-deploy.txt | tail -n1)
           echo "url=$url" >> "$GITHUB_OUTPUT"
-          echo "Deployed: $url"
+          echo "Deployed to: $url"
 
       - name: Comment preview URL
         if: github.event_name == 'pull_request'

@@ -1,4 +1,5 @@
 import { parseCsv } from "@/lib/csv";
+import { HEVY_TRANSLATIONS } from "@/lib/hevy-translations";
 
 export type ImportSet = {
   set_type: string;
@@ -24,141 +25,10 @@ export type ImportWorkout = {
   exercises: ImportExercise[];
 };
 
-/**
- * Hevy exercise → name used in the FitFolio routines. Only unambiguous matches;
- * everything else keeps the Hevy name.
- */
-const ALIASES: Record<string, { name: string; muscle_group: string }> = {
-  "Lat Pulldown (Cable)": { name: "Puxada Aberta", muscle_group: "Costas" },
-  "Lat Pulldown - Close Grip (Cable)": { name: "Puxada Triângulo", muscle_group: "Costas" },
-  "Dumbbell Row": { name: "Remada Unilateral (Serrote)", muscle_group: "Costas" },
-  "Seated Cable Row - V Grip (Cable)": { name: "Remada Baixa no Cabo", muscle_group: "Costas" },
-  "Face Pull": { name: "Face Pull", muscle_group: "Ombro" },
-  "Shrug (Dumbbell)": { name: "Encolhimento com Halteres", muscle_group: "Trapézio" },
-  "Preacher Curl (Machine)": { name: "Rosca Scott", muscle_group: "Bíceps" },
-  "Hammer Curl (Dumbbell)": { name: "Rosca Martelo", muscle_group: "Bíceps" },
-  "Bicep Curl (Cable)": { name: "Rosca Direta na Polia", muscle_group: "Bíceps" },
-  "Rear Delt Reverse Fly (Machine)": { name: "Peck Deck Invertido", muscle_group: "Ombro" },
-  "Butterfly (Pec Deck)": { name: "Crucifixo (Peck Deck)", muscle_group: "Peito" },
-  "Chest Press (Machine)": { name: "Supino Máquina", muscle_group: "Peito" },
-  "Incline Chest Press (Machine)": { name: "Supino Inclinado Máquina", muscle_group: "Peito" },
-  "Shoulder Press (Dumbbell)": { name: "Desenvolvimento Militar (Halteres)", muscle_group: "Ombro" },
-  "Lateral Raise (Dumbbell)": { name: "Elevação Lateral", muscle_group: "Ombro" },
-  "Single Arm Lateral Raise (Cable)": { name: "Elevação Lateral (Cabo)", muscle_group: "Ombro" },
-  "Triceps Rope Pushdown": { name: "Tríceps Corda", muscle_group: "Tríceps" },
-  "Skullcrusher (Dumbbell)": { name: "Tríceps Testa com Halteres", muscle_group: "Tríceps" },
-  "Leg Extension (Machine)": { name: "Extensora", muscle_group: "Quadríceps" },
-  "Leg Press (Machine)": { name: "Leg Press", muscle_group: "Quadríceps" },
-  "Squat (Barbell)": { name: "Agachamento", muscle_group: "Quadríceps" },
-  "Lying Leg Curl (Machine)": { name: "Mesa Flexora", muscle_group: "Posterior de coxa" },
-  "Seated Leg Curl (Machine)": { name: "Cadeira Flexora", muscle_group: "Posterior de coxa" },
-  "Hip Thrust (Barbell)": { name: "Hip Thrust", muscle_group: "Glúteo" },
-  "Standing Calf Raise (Machine)": { name: "Panturrilha em Pé", muscle_group: "Panturrilha" },
-};
-
-/** Primary muscle group for Hevy exercises that keep their original name. */
-const MUSCLE_GROUPS: Record<string, string> = {
-  "Air Bike": "Cardio",
-  "Arnold Press (Dumbbell)": "Ombro",
-  "Back Extension (Hyperextension)": "Lombar",
-  "Band Pullaparts": "Ombro",
-  "Behind the Back Curl (Cable)": "Bíceps",
-  "Behind the Back Wrist Curl (Barbell)": "Antebraço",
-  "Belt Squat (Machine)": "Quadríceps",
-  "Bench Press (Barbell)": "Peito",
-  "Bench Press (Cable)": "Peito",
-  "Bent Over Row (Barbell)": "Costas",
-  "Bicep Curl (Barbell)": "Bíceps",
-  "Bicep Curl (Dumbbell)": "Bíceps",
-  "Cable Crunch": "Abdômen",
-  "Cable Fly Crossovers": "Peito",
-  "Chest Dip (Assisted)": "Peito",
-  "Chest Fly (Dumbbell)": "Peito",
-  "Chest Fly (Machine)": "Peito",
-  "Chin Up (Assisted)": "Costas",
-  "Concentration Curl": "Bíceps",
-  "Cross Body Hammer Curl": "Bíceps",
-  Crunch: "Abdômen",
-  "Crunch (Machine)": "Abdômen",
-  "Crunch (Weighted)": "Abdômen",
-  "Dead Hang": "Antebraço",
-  "Deadlift (Barbell)": "Lombar",
-  "Decline Bench Press (Barbell)": "Peito",
-  "Diamond Push Up": "Tríceps",
-  "EZ Bar Biceps Curl": "Bíceps",
-  "Encolhimento De Ombros": "Trapézio",
-  "Extensão De Tríceps Testa": "Tríceps",
-  "Flexor em Pé (Máquina)": "Posterior de coxa",
-  "Front Raise (Cable)": "Ombro",
-  "Front Raise (Dumbbell)": "Ombro",
-  "Full Squat": "Quadríceps",
-  "Hack Squat (Machine)": "Quadríceps",
-  "Hammer Curl (Cable)": "Bíceps",
-  "Hip Abduction (Machine)": "Abdutores",
-  "Hip Adduction (Machine)": "Adutores",
-  "Incline Bench Press (Barbell)": "Peito",
-  "Incline Bench Press (Smith Machine)": "Peito",
-  "Iso-Lateral Chest Press (Machine)": "Peito",
-  "Iso-Lateral Low Row": "Costas",
-  "Iso-Lateral Row (Machine)": "Costas",
-  "L-Sit Hold": "Abdômen",
-  "Landmine Row": "Costas",
-  "Lat Pulldown (Machine)": "Costas",
-  "Lateral Raise (Machine)": "Ombro",
-  "Leg Press Horizontal (Machine)": "Quadríceps",
-  "Low Cable Fly Crossovers": "Peito",
-  "Overhead Press (Dumbbell)": "Ombro",
-  "Overhead Triceps Extension (Cable)": "Tríceps",
-  Pilates: "Outros",
-  Plank: "Abdômen",
-  "Preacher Curl (Barbell)": "Bíceps",
-  "Pull Up (Assisted)": "Costas",
-  "Pullover (Dumbbell)": "Costas",
-  "Push Up": "Peito",
-  "Rear Delt Reverse Fly (Cable)": "Ombro",
-  "Reverse Curl (Cable)": "Antebraço",
-  "Reverse Grip Lat Pulldown (Cable)": "Costas",
-  "Rope Straight Arm Pulldown": "Costas",
-  Running: "Cardio",
-  "Seated Cable Row - Bar Grip": "Costas",
-  "Seated Cable Row - Bar Wide Grip": "Costas",
-  "Seated Chest Flys (Cable)": "Peito",
-  "Seated Dip Machine": "Tríceps",
-  "Seated Incline Curl (Dumbbell)": "Bíceps",
-  "Seated Lateral Raise (Dumbbell)": "Ombro",
-  "Seated Overhead Press (Barbell)": "Ombro",
-  "Seated Overhead Press (Dumbbell)": "Ombro",
-  "Seated Palms Up Wrist Curl": "Antebraço",
-  "Seated Row (Machine)": "Costas",
-  "Seated Shoulder Press (Machine)": "Ombro",
-  "Seated Triceps Press": "Tríceps",
-  "Seated Wrist Extension (Barbell)": "Antebraço",
-  "Shoulder Press (Machine Plates)": "Ombro",
-  "Single Arm Cable Row": "Costas",
-  "Single Arm Curl (Cable)": "Bíceps",
-  "Single Arm Lat Pulldown": "Costas",
-  "Single Arm Tricep Extension (Dumbbell)": "Tríceps",
-  "Single Arm Triceps Pushdown (Cable)": "Tríceps",
-  "Single Leg Standing Calf Raise (Machine)": "Panturrilha",
-  Spinning: "Cardio",
-  "Squat (Bodyweight)": "Quadríceps",
-  "Squat (Smith Machine)": "Quadríceps",
-  "Standing Calf Raise": "Panturrilha",
-  "Standing Leg Curls": "Posterior de coxa",
-  "Straight Arm Lat Pulldown (Cable)": "Costas",
-  "Straight Leg Deadlift": "Posterior de coxa",
-  Stretching: "Outros",
-  Treadmill: "Cardio",
-  "Triceps Dip (Assisted)": "Tríceps",
-  "Triceps Extension (Barbell)": "Tríceps",
-  "Triceps Extension (Cable)": "Tríceps",
-  "Triceps Extension (Dumbbell)": "Tríceps",
-  "Triceps Extension (Machine)": "Tríceps",
-  "Triceps Kickback (Dumbbell)": "Tríceps",
-  "Triceps Pushdown": "Tríceps",
-  "Upright Row (Barbell)": "Ombro",
-  Walking: "Cardio",
-};
+function translateHevy(hevyName: string): { name: string; muscle_group: string | null } {
+  const hit = HEVY_TRANSLATIONS[hevyName];
+  return hit ? { name: hit.name, muscle_group: hit.muscle_group } : { name: hevyName, muscle_group: null };
+}
 
 const MONTHS: Record<string, number> = {
   Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
@@ -220,10 +90,10 @@ export function parseHevyCsv(text: string) {
 
     const hevyName = get(row, "exercise_title").trim();
     if (lastExercise.get(id) !== hevyName) {
-      const alias = ALIASES[hevyName];
+      const translated = translateHevy(hevyName);
       workout.exercises.push({
-        name: alias?.name ?? hevyName,
-        muscle_group: alias?.muscle_group ?? MUSCLE_GROUPS[hevyName] ?? null,
+        name: translated.name,
+        muscle_group: translated.muscle_group,
         notes: get(row, "exercise_notes").trim() || null,
         sets: [],
       });
@@ -248,7 +118,7 @@ export function parseHevyCsv(text: string) {
       workouts: list.length,
       sets: rows.length,
       exercises: new Set(list.flatMap((w) => w.exercises.map((e) => e.name))).size,
-      mapped: [...hevyNames].filter((n) => ALIASES[n]).length,
+      mapped: [...hevyNames].filter((n) => HEVY_TRANSLATIONS[n]).length,
       first: list.reduce((min, w) => (w.started_at < min ? w.started_at : min), list[0]?.started_at ?? ""),
       last: list.reduce((max, w) => (w.started_at > max ? w.started_at : max), list[0]?.started_at ?? ""),
     },

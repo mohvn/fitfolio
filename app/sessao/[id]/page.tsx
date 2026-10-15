@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import type { LoggerExercise } from "@/components/session/exercise-block";
+import { SessionDurationEditor } from "@/components/session/session-duration-editor";
 import { WorkoutLogger } from "@/components/session/workout-logger";
 import { Button } from "@/components/ui/button";
 import { formatClock, formatWeight } from "@/lib/format";
@@ -132,11 +133,12 @@ function SessionSummary({
       <section className="flex flex-col gap-1">
         <p className="text-[13px] text-muted-foreground">Treino concluído · {date}</p>
         <h2 className="font-medium">{title}</h2>
-        <p className="mt-1 flex flex-wrap gap-x-3 text-[13px] text-foreground-secondary">
-          <span className="font-mono">{formatClock(duration)}</span>
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-3 text-[13px] text-foreground-secondary">
+          <SessionDurationEditor sessionId={session.id} durationSeconds={duration} />
           <span>{sets.length} séries</span>
           <span>{formatWeight(volume)} kg</span>
-        </p>
+        </div>
+        <p className="text-[12px] text-muted-foreground">Toque na duração para editar.</p>
       </section>
 
       <section className="flex flex-col gap-5">
