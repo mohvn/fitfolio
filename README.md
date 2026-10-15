@@ -33,7 +33,36 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
    - [`supabase/migrations/002_session_exercises.sql`](supabase/migrations/002_session_exercises.sql)
    - [`supabase/migrations/003_history_import.sql`](supabase/migrations/003_history_import.sql)
    - [`supabase/migrations/004_stats.sql`](supabase/migrations/004_stats.sql)
+   - [`supabase/migrations/005_backfill_muscle_groups.sql`](supabase/migrations/005_backfill_muscle_groups.sql) (preenche grupo muscular dos exercícios do Hevy)
 3. Em **Authentication → Providers**, confirme que Email está habilitado
+
+## Deploy (GitHub Actions → Vercel)
+
+Push em `main` faz deploy de produção; PR faz preview. O Git integration da Vercel está desligado em `vercel.json` para não duplicar build.
+
+1. No terminal (uma vez):
+
+```bash
+bunx vercel login
+bunx vercel link          # escolhe o projeto fitfolio
+cat .vercel/project.json  # copia orgId e projectId
+bunx vercel tokens        # ou cria um token em vercel.com/account/tokens
+```
+
+2. No GitHub → **Settings → Secrets and variables → Actions**, cria:
+
+| Secret | Valor |
+|--------|--------|
+| `VERCEL_TOKEN` | token da conta |
+| `VERCEL_ORG_ID` | `orgId` do `.vercel/project.json` |
+| `VERCEL_PROJECT_ID` | `projectId` do `.vercel/project.json` |
+
+3. No projeto Vercel → **Settings → Environment Variables**, confere (Production + Preview):
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+
+4. Commit + push em `main` (ou rode o workflow manualmente em **Actions**).
 
 ## Uso
 

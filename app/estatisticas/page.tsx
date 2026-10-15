@@ -141,7 +141,11 @@ export default async function EstatisticasPage({ searchParams }: PageProps<"/est
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <MuscleBarChart data={stats.muscles} />
+          <MuscleBarChart
+            data={stats.muscles}
+            ranking={stats.ranking}
+            weeks={summary.weeks}
+          />
         </CardContent>
       </Card>
 

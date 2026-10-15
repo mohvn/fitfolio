@@ -19,7 +19,8 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import type { MusclePoint } from "@/lib/stats";
+import type { ExerciseRank, MusclePoint } from "@/lib/stats";
+import { NO_MUSCLE_GROUP } from "@/lib/muscles";
 
 type Metric = "seriesSemana" | "series" | "volume" | "reps";
 
@@ -44,9 +45,20 @@ const radarConfig = {
 const compact = (n: number) =>
   n.toLocaleString("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
 
-export function MuscleBarChart({ data }: { data: MusclePoint[] }) {
+export function MuscleBarChart({
+  data,
+  ranking = [],
+  weeks,
+}: {
+  data: MusclePoint[];
+  ranking?: ExerciseRank[];
+  weeks?: number;
+}) {
   const [metric, setMetric] = useState<Metric>("seriesSemana");
   const sorted = [...data].sort((a, b) => b[metric] - a[metric]);
+  const ungrouped = ranking
+    .filter((e) => e.muscle === NO_MUSCLE_GROUP && e.series > 0)
+    .sort((a, b) => b.series - a.series);
 
   return (
     <div className="flex flex-col gap-3">
@@ -78,6 +90,30 @@ export function MuscleBarChart({ data }: { data: MusclePoint[] }) {
           </Bar>
         </BarChart>
       </ChartContainer>
+
+      {ungrouped.length > 0 ? (
+        <div className="flex flex-col gap-2 border-t border-border pt-3">
+          <p className="text-[13px] text-muted-foreground">
+            Exercícios em {NO_MUSCLE_GROUP} ({ungrouped.length}):
+          </p>
+          <ul className="flex flex-col gap-1">
+            {ungrouped.map((e) => (
+              <li
+                key={e.id}
+                className="flex items-baseline justify-between gap-3 text-[13px]"
+              >
+                <span className="min-w-0 truncate">{e.name}</span>
+                <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
+                  {e.series} séries
+                  {weeks
+                    ? ` · ${(e.series / weeks).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}/sem`
+                    : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }
